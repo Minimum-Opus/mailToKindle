@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>mailToKindle</title>
+        <style>
+            html{
+                height: 100%;
+            }
+            body{
+                height: calc(100% - 16px);
+            }
+            #sendArea{
+                height: 100%;
+            }
+            #putArea {
+                overflow: hidden;
+                padding: 0 10px 0 10px;
+                background: #ddd;
+                border: 3px #666 dashed;
+                color: #999;
+                font-size: 20px;
+                font-weight: bold;
+                text-align: center;
+                height: calc(100% - 25px);
+            }
+
+            #putArea.dragover,
+            #putArea:active {
+                background: #cfc;
+                border-color: #9c9;
+                color: #9c9;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="sendArea">
+            <div id="putArea">
+                ここにファイルをドラッグアンドドロップして送信
+            </div>
+            <button onclick="_setConfig();">再設定</button><button onclick="deleteConfig();">設定の削除</button>
+        </div>
+        <div id="sending" style="display: none;">
+                <span>送信中...</span>
+        </div>
+        <div id="setConfig" style="display: none;">
+            <table><tbody>
+                <tr><td>送信先のメールアドレス: </td><td><input id="to" name="to"></td></tr>
+                <tr><td colspan="2"><hr></td></tr>
+                <tr><td>送信元のメールサービス: </td><td><select id="fromService" onchange="changeMailService(this.value);"><!--option value="gmail">Gmail</option--><option value="smtp">SMTP(Manual)</option></select></td></tr>
+                <tr name="gmail" style="display: none;"><td>Googleアカウント: </td><td><input id="fromGoogleID"></td></tr>
+                <tr name="gmail" style="display: none;"><td>Googleパスワード: </td><td><input type="password" id="fromGooglePW"></td></tr>
+                <tr name="smtp"><td>SMTPサーバ: </td><td><input name="from-host"></td></tr>
+                <tr name="smtp"><td>SMTPポート: </td><td><input name="from-port"></td></tr>
+                <tr name="smtp"><td>SSL: </td><td><input type="checkbox" name="from-secure"></td></tr>
+                <tr name="smtp"><td>SMTPアカウント: </td><td><input name="from-auth-user"></td></tr>
+                <tr name="smtp"><td>SMTPパスワード: </td><td><input type="password" name="from-auth-pass"></td></tr>
+                <tr><td colspan="2"><hr></td></tr>
+                <tr><td colspan="2"><button onclick="setConfig();">設定を保存</button></td></tr>
+            </tbody></table>
+        </div>
+        <script>
+            const {mailToKindle} = require('./mailToKindle');
+            const crypto = require("crypto");
+            const path = require('path');
+            const fs = require("fs");
+
+            const algorithm = 'aes-256-ctr';
+            const {passphrease} = require('./passphrease');
+            var configObj = {};
+
+            var status = 0;
+            const send = function(f){
+                var fileName = '';
+                var fullPath = '';
+                if(nw.App.argv.length == 1){
+                    fileName = nw.App.argv[0].split(path.sep).pop();
+                    fullPath = nw.App.argv[0];
+                }else{
+                    fullPath = f;
+                    fileName =fullPath.split(path.sep).pop();
+                }
+                if((nw.App.argv.length == 1 && status == 2) || (nw.App.argv == 0 && status == 1 && f)){
+                    document.getElementById('sendArea').style.display = 'none';
+                    document.getElementById('sending').style.display = '';
+                    mailToKindle(fileName, fullPath, configObj.to, false, configObj.from, function(e, i){
+                        if(nw.App.argv.length == 1 && status == 2){
+                            document.getElementById('sending').children[0].innerText = '送信しました。';
+                            setTimeout(function(){
+                                process.exit();
+                            }, 3000);
+                        }else{
+                            document.getElementById('sending').children[0].innerText = '送信しました。';
+                            setTimeout(function(){
+                                document.getElementById('sendArea').style.display = '';
+                                document.getElementById('sending').style.display = 'none';
+                            }, 3000);
+                        }
+                    });
+                }
+            };
+
+            const inputSet = function(root, data){
+                Object.keys(data).forEach(key => {
+                    if(data[key] instanceof Object){
+                        inputSet((root != ''? root: '') + key + '-', data[key]);
+                    }else{
+                        let dArray = document.getElementsByName((root != ''? root: '')+ key);
+                        Array.prototype.slice.call(dArray).forEach(elem => {
+                            if(typeof(data[key]) == 'boolean')elem.checked = data[key];
+                            else elem.value = data[key];
+                        });
+                    }
+                });
+            };
+            const _inputSet = function(){inputSet('', configObj);};
+
+            const encrypt = (text) => {
+                let cipher = crypto.createCipher(algorithm, passphrease);
+                let crypted = cipher.update(text, 'utf8', 'base64');
+                crypted += cipher.final('base64');
+                return crypted;
+            };
+
+            const decrypt = (text) => {
+                let decipher = crypto.createDecipher(algorithm, passphrease);
+                let dec = decipher.update(text, 'base64', 'utf8');
+                dec += decipher.final('utf8');
+                return dec;
+            };
+
+            const setConfig = function(){
+                // ホスト情報を生成
+                let hostObj = {};
+                const mailService = Array.prototype.slice.call(document.getElementsByName(document.getElementById('fromService').value)).forEach(element =>{
+                    const _element = element.children[1].children[0];
+                    const names = _element.name.split('-');
+                    const item = names.pop();
+                    var curObj = hostObj;
+                    names.forEach(name => {
+                        if(!(curObj[name] instanceof Object)){
+                            curObj[name] = {};
+                        }
+                        curObj = curObj[name];
+                    });
+                    curObj[item] = _element.type == 'checkbox'? _element.checked: (_element.type == 'password'? encrypt(_element.value): _element.value);
+                });
+                mailToKindle('test.txt', Buffer.from('test', 'utf8'), document.getElementById('to').value, false, passCheck(JSON.parse(JSON.stringify(hostObj.from))), function(error, info){
+                    if(error){
+                        alert('設定内容に誤りがあります。');
+                        Array.prototype.slice.call(document.getElementsByTagName('input')).forEach(element => {
+                            element.style.backgroundColor = '#FF8888';
+                        });
+                        return;
+                    }
+                    Array.prototype.slice.call(document.getElementsByTagName('input')).forEach(element => {
+                        element.style.backgroundColor = '';
+                    });
+                    fs.writeFile(configPath, JSON.stringify({to: document.getElementById('to').value, from: hostObj.from}), "utf8", (error) => { });
+                    document.getElementById('sendArea').style.display = '';
+                    document.getElementById('setConfig').style.display = 'none';
+                    configObj = {to: document.getElementById('to').value, from: passCheck(JSON.parse(JSON.stringify(hostObj.from)))};
+                    status++;
+                    send();
+                });
+            };
+            const _setConfig = function(){status--;
+                document.getElementById('sendArea').style.display = 'none';
+                document.getElementById('setConfig').style.display = '';
+            };
+
+            const changeMailService = function(activeName){
+                let nameArr = [];
+                Array.prototype.slice.call(document.getElementById('fromService').children).forEach(element => {
+                    nameArr.push(element.value);
+                });
+                nameArr.forEach(name => {
+                    Array.prototype.slice.call(document.getElementsByName(name)).forEach(element => {
+                        element.style.display = 'none';
+                    });
+                });
+                Array.prototype.slice.call(document.getElementsByName(activeName)).forEach(element => {
+                    element.style.display = '';
+                });
+            };
+
+            const passCheck = function(obj){
+                // 破壊的なので注意！
+                Object.keys(obj).forEach(key => {
+                    if(key == 'pass')obj[key] = decrypt(obj[key]);
+                    if(obj[key] instanceof Object)obj[key]  = passCheck(obj[key]);
+                });
+                return obj;
+            }
+
+            const configPath = (process.env.APPDATA || (process.platform == 'darwin' ? process.env.HOME + 'Library/Preferences' : '/var/local')) + path.sep + 'mailToKindle' + path.sep + 'config.json';
+            const dirName = path.dirname(configPath);
+
+            const deleteConfig = function(){
+                if(confirm(configPath + 'を削除します。')){
+                    fs.unlinkSync(configPath);
+                    process.exit();
+                }
+            };
+            
+            fs.access(dirName, fs.constants.R_OK | fs.constants.W_OK, (error) => {
+                if (error) {
+                    if (error.code === "ENOENT") {
+                        fs.mkdirSync(dirName);
+                    } else {
+                        alert('設定ファイルを作成できませんでした！');
+                        process.exit();
+                    }
+                }
+            });
+
+            fs.readFile(configPath, "utf8", (error, data) => {
+                if (error && error.code === "ENOENT") {
+                    document.getElementById('sendArea').style.display = 'none';
+                    document.getElementById('setConfig').style.display = '';
+                    return;
+                }else if(error){
+                    alert('エラーが発生しました\nCode: ' + error.code);
+                    return;
+                }
+                configObj =　passCheck(JSON.parse(data));
+                inputSet('', configObj);
+                status++;
+                send();
+            });
+
+            if(nw.App.argv.length == 1){
+                status++;
+                send();
+            }
+            document.addEventListener('DOMContentLoaded', function () {
+                var dropArea = document.getElementById('putArea'),
+                    // 画像の最大ファイルサイズ（20MB）
+                    maxSize = 50 * 1024 * 1024;
+
+                // ドロップされたファイルの整理
+                function organizeFiles(files) {
+                    var length = files.length,
+                        i = 0, file;
+
+                    //for (; i < length; i++) {
+                        file = files[0];
+
+                        // 指定したサイズを超える画像は無視
+                        if (file.size > maxSize) {
+                            alert('50MBを超えるファイルは処理できません。')
+                        }
+                        send(file.path);
+                    //}
+                }
+
+                // ドラッグ中の要素がドロップ要素に重なった時
+                dropArea.addEventListener('dragover', function (ev) {
+                    ev.preventDefault();
+                    // ファイルのコピーを渡すようにする
+                    ev.dataTransfer.dropEffect = 'copy';
+                    dropArea.classList.add('dragover');
+                });
+
+                // ドラッグ中の要素がドロップ要素から外れた時
+                dropArea.addEventListener('dragleave', function () {
+                    dropArea.classList.remove('dragover');
+                });
+
+                // ドロップ要素にドロップされた時
+                dropArea.addEventListener('drop', function (ev) {
+                    ev.preventDefault();
+                    dropArea.classList.remove('dragover');
+                    organizeFiles(ev.dataTransfer.files);
+                });
+            });
+        </script>
+    </body>
+</html>

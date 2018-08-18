@@ -1,0 +1,10 @@
+{
+    "name": "mailtokindle",
+    "version":"1.0.0",
+    "main": "index.html",
+    "window": {
+        "resizable": false,
+        "show_in_taskbar": true
+    },
+    "chromium-args" : "--disable-devtools"
+}

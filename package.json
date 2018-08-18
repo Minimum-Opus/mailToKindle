@@ -2,20 +2,23 @@
   "name": "mailtokindle",
   "version": "1.0.0",
   "description": "",
-  "main": "example/app.js",
+  "main": "src/index.html",
   "scripts": {
-    "tsc": ".\\node_modules\\.bin\\tsc "
+    "tsc": ".\\node_modules\\.bin\\tsc --outDir src/ ",
+    "start": "nw",
+    "build": "nwbuild -p win32,win64 -o build/ src/"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/Minimum-Opus/mailToKindle.git"
   },
   "author": "Minimum-Opus",
-  "license": "Unlicense",
+  "license": "MIT",
   "dependencies": {
     "@types/node": "^10.5.6",
-    "config": "^2.0.1",
     "nodemailer": "^4.6.7",
-    "typescript": "^3.0.1"
+    "typescript": "^3.0.1",
+    "nw": "^0.32.2",
+    "nw-builder": "^3.5.4"
   }
 }
