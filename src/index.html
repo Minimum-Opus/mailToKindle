@@ -59,6 +59,14 @@
                 <tr><td colspan="2"><button onclick="setConfig();">設定を保存</button></td></tr>
             </tbody></table>
         </div>
+        <script type="text/javascript">
+            var gui = require('nw.gui'); 
+            var win = gui.Window.get();
+            win.on("devtools-opened",function(){
+                console.info("devtools-opened");
+                win.closeDevTools();
+            });
+        </script>
         <script>
             const {mailToKindle} = require('./mailToKindle');
             const crypto = require("crypto");
@@ -66,7 +74,8 @@
             const fs = require("fs");
 
             const algorithm = 'aes-256-ctr';
-            const {passphrease} = require('./passphrease');
+            let passphrease = '';
+            nw.Window.get().evalNWBin(null, 'passphrease.bin');
             var configObj = {};
 
             var status = 0;
